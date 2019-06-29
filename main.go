@@ -4,15 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"time"
 
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
-
-// General Info: https://github.com/mongodb/mongo-go-driver/releases/tag/v1.0.0-rc1
-
-// Test Branch
 
 // Trainer will be used later in the program
 type Trainer struct {
@@ -23,13 +19,14 @@ type Trainer struct {
 
 func main() {
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI("mongodb://localhost:27017"))
+	// Set client options
+	clientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
+
+	// Connect to MongoDB
+	client, err := mongo.Connect(context.TODO(), clientOptions)
 
 	if err != nil {
 		log.Fatal(err)
-
 	}
 
 	// Check the connection
@@ -41,23 +38,103 @@ func main() {
 
 	fmt.Println("Connected to MongoDB!")
 
+	// Define collection
 	collection := client.Database("test").Collection("trainers")
 
-	// Insert documents
-
+	// Define data
 	ash := Trainer{"Ash", 10, "Pallet Town"}
-	//misty := Trainer{"Misty", 10, "Cerulean City"}
-	//brock := Trainer{"Brock", 15, "Pewter City"}
+	misty := Trainer{"Misty", 10, "Cerulean City"}
+	brock := Trainer{"Brock", 15, "Pewter City"}
 
+	// Insert single document
 	insertResult, err := collection.InsertOne(context.TODO(), ash)
-
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	fmt.Println("Inserted a single document: ", insertResult.InsertedID)
 
-	// Disconnect from MongoDB
+	// Insert multiple documents
+	trainers := []interface{}{misty, brock}
+
+	insertManyResult, err := collection.InsertMany(context.TODO(), trainers)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("Inserted multiple documents: ", insertManyResult.InsertedIDs)
+
+	// Update documents
+	filter := bson.D{{"name", "Ash"}}
+
+	update := bson.D{
+		{"$inc", bson.D{
+			{"age", 1},
+		}},
+	}
+
+	updateResult, err := collection.UpdateOne(context.TODO(), filter, update)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("Matched %v documents and updated %v documents.\n", updateResult.MatchedCount, updateResult.ModifiedCount)
+
+	// Find documents
+	// create a value into which the result can be decoded
+	var result Trainer
+
+	err = collection.FindOne(context.TODO(), filter).Decode(&result)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("Found a single document: %+v\n", result)
+
+	// Pass these options to the Find method
+	findOptions := options.Find()
+	findOptions.SetLimit(2)
+
+	// Here's an array in which you can store the decoded documents
+	var results []*Trainer
+
+	// Passing bson.D{{}} as the filter matches all documents in the collection
+	cur, err := collection.Find(context.TODO(), bson.D{{}}, findOptions)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Finding multiple documents returns a cursor
+	// Iterating through the cursor allows us to decode documents one at a time
+	for cur.Next(context.TODO()) {
+
+		// create a value into which the single document can be decoded
+		var elem Trainer
+		err := cur.Decode(&elem)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		results = append(results, &elem)
+	}
+
+	if err := cur.Err(); err != nil {
+		log.Fatal(err)
+	}
+
+	// Close the cursor once finished
+	cur.Close(context.TODO())
+
+	fmt.Printf("Found multiple documents (array of pointers): %+v\n", results)
+
+	// Delete documents
+	deleteResult, err := collection.DeleteMany(context.TODO(), bson.D{{}})
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Deleted %v documents in the trainers collection\n", deleteResult.DeletedCount)
+
+	// Disconnect from database
 
 	err = client.Disconnect(context.TODO())
 
@@ -65,4 +142,5 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Println("Connection to MongoDB closed.")
+
 }
