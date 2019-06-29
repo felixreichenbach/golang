@@ -10,6 +10,8 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+// Code example by https://www.mongodb.com/blog/post/mongodb-go-driver-tutorial
+
 // Trainer will be used later in the program
 type Trainer struct {
 	Name string
